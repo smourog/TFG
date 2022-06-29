@@ -1,8 +1,10 @@
 import pandas as pd  # data processing, CSV file I/O (e.g. pd.read_csv)
 import seaborn as sns
+import numpy as np
 import sys
 import argparse
 
+from IPython.display import display
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -20,7 +22,7 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import NearMiss
 
 models = []
-models.append(('LR', LogisticRegression(max_iter=10000)))
+models.append(('LR', LogisticRegression(max_iter=1000)))
 models.append(('KNN9', KNeighborsClassifier(n_neighbors=9)))
 models.append(('KNN7', KNeighborsClassifier(n_neighbors=7)))
 models.append(('KNN5', KNeighborsClassifier()))
@@ -32,32 +34,8 @@ models.append(('NB', GaussianNB()))
 models.append(('SVM', SVC()))
 models.append(('MLP', MLPClassifier()))
 
-# MLA = [
-#     # Logistinc Regression
-#     LogisticRegression(),
-
-#     # Random Forest
-#     RandomForestClassifier(),
-
-#     # SVM
-#     SVC(probability=True),
-
-#     # Trees
-#     DecisionTreeClassifier(),
-
-#     # Naive Bayes
-#     GaussianNB(),
-
-#     # Nearest Neighbor
-#     KNeighborsClassifier(n_neighbors=9),
-#     KNeighborsClassifier(n_neighbors=7),
-#     KNeighborsClassifier(),
-#     KNeighborsClassifier(n_neighbors=3),
-#     KNeighborsClassifier(n_neighbors=1),
-
-#     # FNN
-#     MLPClassifier(),
-# ]
+names = []
+trained_models = []
 
 
 def printUsage():
@@ -80,8 +58,12 @@ def buildDataset(resample=""):
     malware = pd.read_csv("./dataset_malware.csv")
 
     data = pd.concat([benign, malware], ignore_index=True)
+
     X = data.drop(['Name', 'Malware'], axis=1)
     y = data['Malware']
+
+    names = X.columns
+    print(names)
 
     if (resample == "-o"):
         print("Aplicando oversampling...")
@@ -93,9 +75,6 @@ def buildDataset(resample=""):
         X, y = nearmiss.fit_resample(X, y)
 
     print("Número de muestras totales:", len(X), "\n\n\n")
-    # plt.figure(figsize=(8, 6))
-    # ax = sns.countplot(y=y)
-    # # ax.set_xticklabels(['Benign', 'Malware'])
     return X, y
 
 
@@ -107,12 +86,6 @@ def trainTest(X, y):
 
     X_train = sc.transform(X_train)
     X_test = sc.transform(X_test)
-
-    # Selección de características (provisional)
-    # skpca = PCA(n_components=10)
-
-    # X_train = skpca.fit_transform(X_train)
-    # X_test = skpca.transform(X_test)
 
     print(f'Número de características usadas: {X_train.shape[1]} \n\n\n')
 
@@ -127,12 +100,15 @@ def crossValidationScore(X_train, y_train):
     print("COMPARACIÓNN DE ALGORITMOS MEDIANTE CROSS-VALIDATION")
     for name, model in models:
         kfold = model_selection.KFold(n_splits=10)
+        trained_model = model.fit(X_train, y_train)
         cv_results = model_selection.cross_val_score(
-            model, X_train, y_train, cv=kfold, scoring=scoring)
+            trained_model, X_train, y_train, cv=kfold, scoring=scoring)
         results.append(cv_results)
         names.append(name)
         msg = "%s: %f (%f)" % (name, cv_results.mean(), cv_results.std())
         print(msg)
+        trained_models.append((name, trained_model))
+
     print("\n\n\n")
 
 
@@ -141,9 +117,9 @@ def compareMLAs(X_train, X_test, y_train, y_test):
     MLA_compare = pd.DataFrame(columns=MLA_columns)
 
     row_index = 0
-    for name, model in models:
+    for name, model in trained_models:
 
-        predicted = model.fit(X_train, y_train).predict(X_test)
+        predicted = model.predict(X_test)
 
         fp, tp, th = roc_curve(y_test, predicted)
         MLA_name = name
@@ -152,12 +128,12 @@ def compareMLAs(X_train, X_test, y_train, y_test):
             model.score(X_train, y_train), 4)
         MLA_compare.loc[row_index, 'Test Accuracy'] = round(
             model.score(X_test, y_test), 4)
-        MLA_compare.loc[row_index, 'Precission'] = precision_score(
+        MLA_compare.loc[row_index, 'Precision'] = precision_score(
             y_test, predicted)
         MLA_compare.loc[row_index, 'Recall'] = recall_score(y_test, predicted)
         MLA_compare.loc[row_index, 'F1-Score'] = f1_score(
             y_test, predicted)
-        MLA_compare.loc[row_index, 'AUC'] = auc(fp, tp)
+        # MLA_compare.loc[row_index, 'AUC'] = auc(fp, tp)
 
         row_index += 1
 
@@ -179,7 +155,7 @@ elif len(sys.argv) == 2:
     else:
         printUsage()
         sys.exit()
-elif len(sys.argv) == 3:
+else:
     printUsage()
     sys.exit()
 
